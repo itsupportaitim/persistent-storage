@@ -55,7 +55,7 @@ async function fetchAllCompanies(token) {
   const limit = 100; // Fetch 100 at a time for efficiency
   
   while (true) {
-    const url = `${COMPANIES_BASE_URL}?order=name_lower.asc,name.asc&limit=${limit}&offset=${offset}&and=(is_active.eq.true)`;
+    const url = `${COMPANIES_BASE_URL}?order=name_lower.asc,name.asc&limit=${limit}&offset=${offset}`;
     
     const res = await fetch(url, {
       headers: {
@@ -103,7 +103,7 @@ async function fetchDriversForCompany(token, company) {
   // Add small delay to avoid rate limiting
   await new Promise(resolve => setTimeout(resolve, 150));
 
-  const url = `https://cloud.zeroeld.us/rest/logs_by_driver_view?select=id,first_name,last_name,username,assigned_vehicle_ids,last_seen&and=(is_active.eq.true,company_id.eq.${encodeURIComponent(company.id)})&order=last_seen.desc.nullslast&limit=1000`;
+  const url = `https://cloud.zeroeld.us/rest/logs_by_driver_view?select=id,first_name,last_name,username,assigned_vehicle_ids,last_seen&company_id=eq.${encodeURIComponent(company.id)}&order=last_seen.desc.nullslast&limit=1000`;
 
   try {
     const res = await fetch(url, {
@@ -290,7 +290,7 @@ Deno.serve(async (req) => {
     const resultJson = JSON.stringify(result, null, 2);
 
     // Try to upload to Supabase Storage 'arc'
-    const upload = await uploadToSupabaseStorage("zerofinalversion.json", resultJson);
+    const upload = await uploadToSupabaseStorage("zero.json", resultJson);
 
     return new Response(resultJson, {
       status: 200,

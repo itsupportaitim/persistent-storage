@@ -7,7 +7,7 @@ export async function filterInactiveDrivers(inputFile: string, outputFile: strin
     const companies = JSON.parse(raw);
     const filtered = companies.map(c => ({
       ...c,
-      drivers: c.drivers.filter(d => d.active === true)
+      drivers: c.drivers
     }));
     await Deno.writeTextFile(outputFile, JSON.stringify(filtered, null, 2));
     return filtered;

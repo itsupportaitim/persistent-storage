@@ -113,9 +113,6 @@ export function filterDrivers(rawDrivers: any[]): any[] {
       // Must have appVersion
       if (!d.appVersion) return false;
 
-      // Must not be inactive
-      if (d.active === false) return false;
-
       return true;
     })
     .map((d) => ({

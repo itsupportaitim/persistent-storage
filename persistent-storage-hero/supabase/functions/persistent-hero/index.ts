@@ -113,11 +113,11 @@ Deno.serve(async (req) => {
 
         // 7️⃣ Upload to Supabase storage
         const finalData = await Deno.readTextFile("/tmp/finalversion.json");
-        const { error: uploadError } = await supabase.storage.from("arc").upload("herofinalversion.json", new Blob([finalData]), {
+        const { error: uploadError } = await supabase.storage.from("arc").upload("hero.json", new Blob([finalData]), {
           upsert: true
         });
         if (uploadError) throw uploadError;
-        console.log(`✅ Uploaded herofinalversion.json to bucket arc`);
+        console.log(`✅ Uploaded hero.json to bucket arc`);
         const executionTime = Date.now() - startTime;
 
         return {
