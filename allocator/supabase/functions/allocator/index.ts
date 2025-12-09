@@ -110,7 +110,6 @@ Deno.serve(async (req) => {
 
     // Insert into daily_allocations
     const { error: allocError } = await supabase.from("daily_allocations").insert({
-      user_id: null,
       company_eld_id: foundCompany.companyId || foundCompany.id,
       driver_eld_id: eldId,
       allocation_date: today,
