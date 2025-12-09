@@ -100,8 +100,8 @@ Deno.serve(async (req) => {
     const today = getBishkekDate();
     const driverName = `${foundDriver.firstName || ""} ${foundDriver.lastName || ""}`.trim();
 
-    // Insert into daily_master_eld_data
-    const { error: masterError } = await supabase.from("daily_master_eld_data").insert({
+    // Upsert into daily_master_eld_data (overwrite if exists)
+    const { error: masterError } = await supabase.from("daily_master_eld_data").upsert({
       company_eld_id: foundCompany.companyId || foundCompany.id,
       company_name: foundCompany.name,
       driver_eld_id: eldId,
@@ -109,14 +109,17 @@ Deno.serve(async (req) => {
       date_of_data: today,
       vehicle_id: foundDriver.vehicle,
       vehicleinfo: null,
-    });
+    }, { onConflict: "driver_eld_id" });
 
     if (masterError) {
-      return new Response(JSON.stringify({ error: "Failed to insert into daily_master_eld_data", details: masterError.message }), {
+      return new Response(JSON.stringify({ error: "Failed to upsert into daily_master_eld_data", details: masterError.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    // Remove from blacklist if exists
+    await supabase.from("driver_blacklist").delete().eq("driver_eld_id", eldId);
 
     // Get user_id from existing allocation for this company
     const companyEldId = foundCompany.companyId || foundCompany.id;
