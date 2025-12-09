@@ -87,17 +87,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get today's date in Bishkek time (UTC+6)
-    function getBishkekDate() {
-      const now = new Date();
-      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-      const bishkek = new Date(utc + 6 * 60 * 60000);
-      const yyyy = bishkek.getFullYear();
-      const mm = String(bishkek.getMonth() + 1).padStart(2, "0");
-      const dd = String(bishkek.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
+    // Get date from existing record for this driver in the same company
+    const companyEldId = foundCompany.companyId || foundCompany.id;
+    const { data: existingRecord } = await supabase
+      .from("daily_master_eld_data")
+      .select("date_of_data")
+      .eq("company_eld_id", companyEldId)
+      .limit(1)
+      .single();
+
+    if (!existingRecord?.date_of_data) {
+      return new Response(JSON.stringify({ error: "No existing record found for this company to get date", company_eld_id: companyEldId }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    const today = getBishkekDate();
+    const dateOfData = existingRecord.date_of_data;
     const driverName = `${foundDriver.firstName || ""} ${foundDriver.lastName || ""}`.trim();
 
     // Upsert into daily_master_eld_data (overwrite if exists)
@@ -106,10 +111,10 @@ Deno.serve(async (req) => {
       company_name: foundCompany.name,
       driver_eld_id: eldId,
       driver_name: driverName,
-      date_of_data: today,
+      date_of_data: dateOfData,
       vehicle_id: foundDriver.vehicle,
       vehicleinfo: null,
-    }, { onConflict: "driver_eld_id" });
+    }, { onConflict: "company_eld_id,driver_eld_id" });
 
     if (masterError) {
       return new Response(JSON.stringify({ error: "Failed to upsert into daily_master_eld_data", details: masterError.message }), {
@@ -122,7 +127,6 @@ Deno.serve(async (req) => {
     await supabase.from("driver_blacklist").delete().eq("driver_eld_id", eldId);
 
     // Get user_id from existing allocation for this company
-    const companyEldId = foundCompany.companyId || foundCompany.id;
     const { data: existingAlloc } = await supabase
       .from("daily_allocations")
       .select("user_id")
@@ -142,7 +146,7 @@ Deno.serve(async (req) => {
       user_id: existingAlloc.user_id,
       company_eld_id: companyEldId,
       driver_eld_id: eldId,
-      allocation_date: today,
+      allocation_date: dateOfData,
       vehicle_id: foundDriver.vehicle,
     });
 
