@@ -87,7 +87,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    // Get today's date in Bishkek time (UTC+6)
+    function getBishkekDate() {
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      const bishkek = new Date(utc + 6 * 60 * 60000);
+      const yyyy = bishkek.getFullYear();
+      const mm = String(bishkek.getMonth() + 1).padStart(2, "0");
+      const dd = String(bishkek.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    const today = getBishkekDate();
     const driverName = `${foundDriver.firstName || ""} ${foundDriver.lastName || ""}`.trim();
 
     // Insert into daily_master_eld_data
@@ -108,9 +118,26 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Get user_id from existing allocation for this company
+    const companyEldId = foundCompany.companyId || foundCompany.id;
+    const { data: existingAlloc } = await supabase
+      .from("daily_allocations")
+      .select("user_id")
+      .eq("company_eld_id", companyEldId)
+      .limit(1)
+      .single();
+
+    if (!existingAlloc?.user_id) {
+      return new Response(JSON.stringify({ error: "No existing allocation found for this company", company_eld_id: companyEldId }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // Insert into daily_allocations
     const { error: allocError } = await supabase.from("daily_allocations").insert({
-      company_eld_id: foundCompany.companyId || foundCompany.id,
+      user_id: existingAlloc.user_id,
+      company_eld_id: companyEldId,
       driver_eld_id: eldId,
       allocation_date: today,
       vehicle_id: foundDriver.vehicle,
