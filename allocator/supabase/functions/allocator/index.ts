@@ -1,12 +1,22 @@
 // @ts-nocheck
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   // Only handle POST requests
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
@@ -16,7 +26,7 @@ Deno.serve(async (req) => {
     if (!eldId) {
       return new Response(JSON.stringify({ error: "eldId is required" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -26,64 +36,52 @@ Deno.serve(async (req) => {
     if (!supabaseUrl || !supabaseKey) {
       return new Response(JSON.stringify({ error: "Missing Supabase credentials" }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch hero.json and zero.json from storage
-    const [heroRes, zeroRes] = await Promise.all([
-      supabase.storage.from("arc").download("hero.json"),
-      supabase.storage.from("arc").download("zero.json"),
-    ]);
+    // Determine which file to search based on eldId prefix
+    const isHero = eldId.startsWith("User:");
+    const fileName = isHero ? "hero.json" : "zero.json";
 
-    if (heroRes.error && zeroRes.error) {
-      return new Response(JSON.stringify({ error: "Failed to fetch driver data files" }), {
+    const { data: fileData, error: fileError } = await supabase.storage.from("arc").download(fileName);
+
+    if (fileError || !fileData) {
+      return new Response(JSON.stringify({ error: `Failed to fetch ${fileName}` }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     let foundDriver = null;
     let foundCompany = null;
 
-    // Search in hero.json
-    if (heroRes.data) {
-      const heroText = await heroRes.data.text();
-      const heroData = JSON.parse(heroText);
-      const companies = heroData.companyDrivers || heroData;
+    const fileText = await fileData.text();
+    const jsonData = JSON.parse(fileText);
+    const companies = jsonData.companyDrivers || jsonData;
 
-      for (const company of companies) {
-        const driver = company.drivers?.find((d) => d.eldId === eldId);
-        if (driver) {
-          foundDriver = driver;
-          foundCompany = company;
-          break;
-        }
+    for (const company of companies) {
+      const driver = company.drivers?.find((d) => d.eldId === eldId);
+      if (driver) {
+        foundDriver = driver;
+        foundCompany = company;
+        break;
       }
     }
 
-    // If not found in hero, search in zero.json
-    if (!foundDriver && zeroRes.data) {
-      const zeroText = await zeroRes.data.text();
-      const zeroData = JSON.parse(zeroText);
-      const companies = zeroData.companyDrivers || zeroData;
-
-      for (const company of companies) {
-        const driver = company.drivers?.find((d) => d.eldId === eldId);
-        if (driver) {
-          foundDriver = driver;
-          foundCompany = company;
-          break;
-        }
-      }
-    }
+    // Remove from blacklist regardless of whether driver is found
+    await supabase.from("driver_blacklist").delete().eq("driver_eld_id", eldId);
 
     if (!foundDriver || !foundCompany) {
-      return new Response(JSON.stringify({ error: "Driver not found", eldId }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
+      return new Response(JSON.stringify({
+        success: true,
+        message: "Driver not found in files, but removed from blacklist if existed",
+        eldId
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -99,7 +97,7 @@ Deno.serve(async (req) => {
     if (!existingRecord?.date_of_data) {
       return new Response(JSON.stringify({ error: "No existing record found for this company to get date", company_eld_id: companyEldId }), {
         status: 404,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const dateOfData = existingRecord.date_of_data;
@@ -119,12 +117,9 @@ Deno.serve(async (req) => {
     if (masterError) {
       return new Response(JSON.stringify({ error: "Failed to upsert into daily_master_eld_data", details: masterError.message }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Remove from blacklist if exists
-    await supabase.from("driver_blacklist").delete().eq("driver_eld_id", eldId);
 
     // Get user_id from existing allocation for this company
     const { data: existingAlloc } = await supabase
@@ -137,7 +132,7 @@ Deno.serve(async (req) => {
     if (!existingAlloc?.user_id) {
       return new Response(JSON.stringify({ error: "No existing allocation found for this company", company_eld_id: companyEldId }), {
         status: 404,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -153,7 +148,7 @@ Deno.serve(async (req) => {
     if (allocError) {
       return new Response(JSON.stringify({ error: "Failed to insert into daily_allocations", details: allocError.message }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -167,13 +162,13 @@ Deno.serve(async (req) => {
       },
     }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
